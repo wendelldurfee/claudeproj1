@@ -89,8 +89,8 @@ export default function LibraryScreen() {
 
       <View style={{ flexDirection: 'row', gap: spacing.sm }}>
         <Button
-          label="Import bank"
-          icon="cloud-download-outline"
+          label="Upload Exam"
+          icon="cloud-upload-outline"
           onPress={() => router.push('/import')}
           style={{ flex: 1 }}
         />
@@ -112,7 +112,7 @@ export default function LibraryScreen() {
               icon="library-outline"
               title="No question banks yet"
               message="Import a dump file, GIFT, Aiken, CSV or JSON bank to get started."
-              action={<Button label="Import a bank" icon="add" onPress={() => router.push('/import')} />}
+              action={<Button label="Upload Exam" icon="add" onPress={() => router.push('/import')} />}
             />
           </Card>
         ) : (
