@@ -34,12 +34,18 @@ export function detectFormat(raw: string, fileName = ''): BankFormat {
 
   if (text.startsWith('{') || text.startsWith('[')) return 'json';
 
-  // A question header plus a "Correct Answer:" line is the dump-site layout.
-  if (/^\s*(?:question|q)\s*[#:]?\s*\d+/im.test(head) && /correct\s+answer\s*[:\-]/i.test(head)) {
-    return 'examtopics';
-  }
-
   if (/^::.+?::/m.test(head) || /\{\s*(?:=|~)/.test(head)) return 'gift';
+
+  /**
+   * Numbered question headers are the dump-site signature. Two or more of them
+   * settles it, and this has to be tested before Aiken: many dumps mark the key
+   * with a bare "Answer: C", which is also Aiken's marker, but Aiken has no
+   * question headers and no concept of an explanation — misrouting a dump to it
+   * silently discards every explanation and reference in the file.
+   */
+  const headers = text.match(/^[ \t]*(?:new[ \t]+)?(?:question|q)[ \t]*(?:no)?[ \t]*[#:.]?[ \t]*\d+\b/gim);
+  if ((headers?.length ?? 0) >= 2) return 'examtopics';
+
   if (/^\s*answer\s*[:\-]\s*[A-Z]/im.test(head)) return 'aiken';
 
   if (ext === 'csv' || ext === 'tsv') return 'csv';

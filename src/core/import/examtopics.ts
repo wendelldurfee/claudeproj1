@@ -43,17 +43,23 @@ import {
  *     https://learn.microsoft.com/...
  */
 
-/** "Question #12 Topic 3", "QUESTION 12", "Q12." — all start a new block. */
-const QUESTION_HEADER = /^\s*(?:question|q)\s*[#:]?\s*(\d+)\b(?:\s*[-–—]?\s*topic\s*(\d+))?/i;
+/**
+ * Starts a new block. Covers every header style seen in the wild:
+ * "Question #12 Topic 3", "QUESTION 12", "Q12.", "NEW QUESTION 7",
+ * "QUESTION NO: 5".
+ */
+const QUESTION_HEADER =
+  /^\s*(?:new\s+)?(?:question|q)\s*(?:no)?\s*[#:.]?\s*(\d+)\b(?:\s*[-–—]?\s*\(?\s*(?:exam\s+)?topic\s*(\d+)\s*\)?)?/i;
 /** Same header, matched anywhere in the document rather than line by line. */
-const QUESTION_HEADER_ANYWHERE = /^[ \t]*(?:question|q)[ \t]*[#:]?[ \t]*\d+\b/im;
+const QUESTION_HEADER_ANYWHERE = /^[ \t]*(?:new[ \t]+)?(?:question|q)[ \t]*(?:no)?[ \t]*[#:.]?[ \t]*\d+\b/im;
 const OPTION_MARKER = /^\s*([A-Z])\s*[.)\]:]\s+(.*)$/;
 const CORRECT_LINE = /^\s*(?:correct\s+answer|answer|correct)\s*[:\-]\s*(.*)$/i;
 const COMMUNITY_HEADER = /^\s*community\s+vote\s+distribution/i;
 const VOTE_LINE = /^\s*([A-Z]{1,6})\s*\((\d+)%?\)/;
 const EXPLANATION_HEADER = /^\s*(?:explanation|answer\s+description|rationale)\s*[:\-]?\s*(.*)$/i;
 const REFERENCE_HEADER = /^\s*(?:references?|source|link)\s*[:\-]?\s*(.*)$/i;
-const TOPIC_ONLY = /^\s*topic\s*(\d+)\s*$/i;
+/** "Topic 3", "(Exam Topic 5)", "- (Exam Topic 5)" on a line of its own. */
+const TOPIC_ONLY = /^\s*[-–—]?\s*\(?\s*(?:exam\s+)?topic\s*(\d+)\s*\)?\s*$/i;
 const CHOOSE_HINT = /\(\s*(?:choose|select)\s+(two|three|four|2|3|4|all\s+that\s+apply)/i;
 const NOISE_LINE =
   /^\s*(?:show\s+suggested\s+answer|hide\s+answer|reveal\s+solution|upvoted\s+\d+\s+times?|most\s+voted|highly\s+voted|selected\s+answer\s*:?)\s*$/i;
@@ -76,6 +82,15 @@ export function importExamTopics(raw: string, options: ExamTopicsOptions = {}): 
     throw new ImportError(
       'No questions found. Expected blocks beginning with "Question #1" or "QUESTION 1".',
     );
+  }
+
+  // Dumps converted from PDF carry the page header and footer into the middle
+  // of questions. Strip them before parsing, or they end up inside stems.
+  const boilerplate = findBoilerplate(text, blocks.length);
+  if (boilerplate.size > 0) {
+    for (const block of blocks) {
+      block.lines = block.lines.filter((line) => !boilerplate.has(line.trim()));
+    }
   }
 
   const code = options.code ?? guessExamCode(text) ?? 'DUMP';
@@ -121,6 +136,47 @@ interface Block {
   number: number;
   topic?: string;
   lines: string[];
+}
+
+/**
+ * Identifies repeated page furniture — the watermark, site URL and footer that
+ * a PDF-to-text conversion repeats on every page, landing mid-question.
+ *
+ * Detection is by repetition rather than a list of known vendor strings, so it
+ * works for any dump site: a line that is not structural (not an option, answer
+ * key, explanation header or topic line) and recurs across a large share of the
+ * questions is furniture, not content. Answer options such as the "A. Mastered
+ * / B. Not Mastered" pair repeat legitimately, which is why structural lines are
+ * exempt.
+ */
+function findBoilerplate(text: string, blockCount: number): Set<string> {
+  const counts = new Map<string, number>();
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line.length < 8) continue;
+    if (
+      OPTION_MARKER.test(line) ||
+      CORRECT_LINE.test(line) ||
+      EXPLANATION_HEADER.test(line) ||
+      REFERENCE_HEADER.test(line) ||
+      COMMUNITY_HEADER.test(line) ||
+      TOPIC_ONLY.test(line) ||
+      QUESTION_HEADER.test(line)
+    ) {
+      continue;
+    }
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+
+  // Needs to recur often in absolute terms and relative to the question count,
+  // so a short dump with a genuinely repeated sentence is not stripped.
+  const threshold = Math.max(4, Math.ceil(blockCount * 0.15));
+  const boilerplate = new Set<string>();
+  for (const [line, count] of counts) {
+    if (count >= threshold) boilerplate.add(line);
+  }
+  return boilerplate;
 }
 
 function splitIntoBlocks(text: string): Block[] {

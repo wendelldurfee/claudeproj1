@@ -94,12 +94,27 @@ export function emptyBank(overrides: Partial<ExamBank> = {}): ExamBank {
 }
 
 /**
- * Drops questions that can never be graded (no options, or no answer key) and
- * reports each one, rather than importing a bank that silently marks
- * everything wrong.
+ * VCE exports drag-and-drop and hotspot questions as a two-option
+ * "Mastered / Not Mastered" self-assessment, with the real content living in an
+ * image. Once such a file is converted to text the image is gone and the
+ * question is unanswerable, so these are dropped rather than scored.
+ */
+function isMasteryStub(question: Question): boolean {
+  const choices = question.choices ?? [];
+  if (choices.length !== 2) return false;
+  const texts = choices.map((c) => c.text.trim().toLowerCase());
+  return texts.includes('mastered') && texts.includes('not mastered');
+}
+
+/**
+ * Drops questions that can never be graded (no options, no answer key, or an
+ * image-only mastery stub) and reports each one, rather than importing a bank
+ * that silently marks everything wrong.
  */
 export function pruneInvalid(questions: Question[], warnings: string[]): Question[] {
-  return questions.filter((q) => {
+  let stubs = 0;
+
+  const kept = questions.filter((q) => {
     const needsChoices = ['single', 'multiple', 'truefalse', 'ordering', 'dragdrop', 'matching'];
     if (needsChoices.includes(q.type) && (q.choices ?? []).length === 0) {
       warnings.push(`Skipped question ${q.number ?? q.id}: no answer options found.`);
@@ -109,6 +124,22 @@ export function pruneInvalid(questions: Question[], warnings: string[]): Questio
       warnings.push(`Skipped question ${q.number ?? q.id}: no correct answer found.`);
       return false;
     }
+    if (isMasteryStub(q)) {
+      stubs++;
+      return false;
+    }
     return true;
   });
+
+  // Reported once: these run to dozens in a converted VCE file, and a warning
+  // per question would bury everything else.
+  if (stubs > 0) {
+    warnings.push(
+      `Skipped ${stubs} drag-and-drop or hotspot question${stubs === 1 ? '' : 's'} that the source ` +
+        'file stores as an image ("Mastered / Not Mastered"). The question content is not present ' +
+        'in the text and cannot be answered.',
+    );
+  }
+
+  return kept;
 }

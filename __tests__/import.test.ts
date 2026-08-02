@@ -152,6 +152,159 @@ A (9%)
   });
 });
 
+/**
+ * A converted-from-PDF dump, in the layout used by the "NEW QUESTION n" family
+ * of sites. Structure mirrors a real file: repeated page furniture, a bare
+ * "Answer:" key rather than "Correct Answer:", "(Exam Topic n)" on its own
+ * line, and VCE mastery stubs standing in for image-based questions.
+ */
+const PDF_DUMP = `We recommend you to try the PREMIUM XY-200 Dumps From Somesite
+https://www.somesite.example/XY-200-exam/ (422 Q&As)
+ Vendor
+Exam Questions XY-200
+Sample Services
+Your Partner of IT Exam visit - https://www.somesite.example
+
+NEW QUESTION 1
+- (Exam Topic 5)
+You manage a directory tenant named contoso.example.
+You need to let an external user sign in.
+What should you do?
+
+A. Add a custom domain name.
+B. Modify the authentication methods.
+C. Modify the external collaboration settings.
+D. Assign the security administrator role.
+
+Answer: C
+
+Explanation:
+External collaboration settings control guest invitations.
+Reference:
+https://docs.example.com/collaboration
+
+We recommend you to try the PREMIUM XY-200 Dumps From Somesite
+https://www.somesite.example/XY-200-exam/ (422 Q&As)
+Your Partner of IT Exam visit - https://www.somesite.example
+
+NEW QUESTION 2
+- (Exam Topic 5)
+Which two actions should you perform?
+
+A. Alpha
+B. Bravo
+C. Charlie
+D. Delta
+E. Echo
+
+Answer: DE
+
+We recommend you to try the PREMIUM XY-200 Dumps From Somesite
+https://www.somesite.example/XY-200-exam/ (422 Q&As)
+Your Partner of IT Exam visit - https://www.somesite.example
+
+NEW QUESTION 3
+- (Exam Topic 5)
+Drag each item to the correct location.
+
+A. Mastered
+B. Not Mastered
+
+Answer: A
+
+Explanation:
+See the drag-and-drop layout in the exhibit.
+
+We recommend you to try the PREMIUM XY-200 Dumps From Somesite
+https://www.somesite.example/XY-200-exam/ (422 Q&As)
+Your Partner of IT Exam visit - https://www.somesite.example
+
+NEW QUESTION 4
+- (Exam Topic 5)
+Which port does HTTPS use?
+
+A. 80
+B. 443
+
+Answer: B
+`;
+
+describe('converted-from-PDF dumps ("NEW QUESTION n" layout)', () => {
+  const { bank, warnings } = importExamTopics(PDF_DUMP);
+
+  it('is routed to the dump parser, not Aiken', () => {
+    // A bare "Answer: C" is also Aiken's marker. Aiken has no explanations, so
+    // misrouting here silently discards every explanation in the file.
+    expect(detectFormat(PDF_DUMP, 'dump.pdf')).toBe('examtopics');
+  });
+
+  it('recognises "NEW QUESTION n" headers', () => {
+    // Four blocks in, one dropped as a mastery stub.
+    expect(bank.questions.map((q) => q.number)).toEqual([1, 2, 4]);
+  });
+
+  it('reads "(Exam Topic n)" on its own line as the section', () => {
+    expect(bank.questions[0].sectionId).toBe('topic-5');
+    expect(bank.sections).toEqual([{ id: 'topic-5', title: 'Topic 5' }]);
+  });
+
+  it('strips repeated page furniture from stems', () => {
+    for (const question of bank.questions) {
+      expect(question.stem).not.toMatch(/somesite|Partner of IT Exam|PREMIUM/i);
+      expect(question.choices?.map((c) => c.text).join(' ') ?? '').not.toMatch(/somesite/i);
+    }
+    expect(bank.questions[0].stem).toContain('external user sign in');
+  });
+
+  it('keeps the stem free of the previous question\'s explanation', () => {
+    expect(bank.questions[1].stem).toBe('Which two actions should you perform?');
+  });
+
+  it('accepts a bare "Answer:" key, single and multiple', () => {
+    expect(bank.questions[0].correct).toEqual(['C']);
+    expect(bank.questions[1].correct).toEqual(['D', 'E']);
+    expect(bank.questions[1].type).toBe('multiple');
+  });
+
+  it('captures explanation and reference separately', () => {
+    expect(bank.questions[0].explanation).toBe(
+      'External collaboration settings control guest invitations.',
+    );
+    expect(bank.questions[0].reference).toBe('https://docs.example.com/collaboration');
+  });
+
+  it('reads the exam code from the preamble', () => {
+    expect(bank.code).toBe('XY-200');
+  });
+
+  it('drops image-only "Mastered / Not Mastered" stubs with one grouped warning', () => {
+    expect(bank.questions.some((q) => /Drag each item/.test(q.stem))).toBe(false);
+    const stubWarning = warnings.find((w) => /Mastered/.test(w));
+    expect(stubWarning).toMatch(/Skipped 1 drag-and-drop or hotspot question\b/);
+  });
+
+  it('does not strip repeated lines from a short bank', () => {
+    // The furniture threshold has an absolute floor, so a 2-question bank that
+    // happens to repeat a sentence keeps it.
+    const short = importExamTopics(`
+Question #1
+Common preamble sentence.
+Which one?
+A. Yes
+B. No
+Correct Answer: A
+
+Question #2
+Common preamble sentence.
+Which other one?
+A. Yes
+B. No
+Correct Answer: B
+`);
+    expect(short.bank.questions[0].stem).toContain('Common preamble sentence.');
+  });
+});
+
 describe('exam code detection', () => {
   const withHeader = (header: string) =>
     importExamTopics(`${header}\n\nQuestion #1\nPick one.\nA. Yes\nB. No\nCorrect Answer: A\n`).bank
