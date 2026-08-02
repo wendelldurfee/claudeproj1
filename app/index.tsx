@@ -111,7 +111,7 @@ export default function LibraryScreen() {
             <EmptyState
               icon="library-outline"
               title="No question banks yet"
-              message="Import a dump file, GIFT, Aiken, CSV or JSON bank to get started."
+              message="Upload a dump file, GIFT, Aiken, CSV or JSON bank to get started."
               action={<Button label="Upload Exam" icon="add" onPress={() => router.push('/import')} />}
             />
           </Card>
@@ -153,7 +153,10 @@ export default function LibraryScreen() {
                     </View>
 
                     <View style={{ flexDirection: 'row', gap: spacing.lg }}>
-                      <Meta icon="help-circle-outline" label={`${bank.totalQuestions} questions`} />
+                      <Meta
+                        icon="help-circle-outline"
+                        label={`${bank.totalQuestions} question${bank.totalQuestions === 1 ? '' : 's'}`}
+                      />
                       <Meta icon="time-outline" label={`${bank.timeLimitMinutes} min`} />
                       <Meta icon="trophy-outline" label={`Pass ${bank.passingScore}%`} />
                     </View>

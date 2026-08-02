@@ -45,6 +45,8 @@ import {
 
 /** "Question #12 Topic 3", "QUESTION 12", "Q12." — all start a new block. */
 const QUESTION_HEADER = /^\s*(?:question|q)\s*[#:]?\s*(\d+)\b(?:\s*[-–—]?\s*topic\s*(\d+))?/i;
+/** Same header, matched anywhere in the document rather than line by line. */
+const QUESTION_HEADER_ANYWHERE = /^[ \t]*(?:question|q)[ \t]*[#:]?[ \t]*\d+\b/im;
 const OPTION_MARKER = /^\s*([A-Z])\s*[.)\]:]\s+(.*)$/;
 const CORRECT_LINE = /^\s*(?:correct\s+answer|answer|correct)\s*[:\-]\s*(.*)$/i;
 const COMMUNITY_HEADER = /^\s*community\s+vote\s+distribution/i;
@@ -375,11 +377,42 @@ function parseChooseHint(stem: string): number | undefined {
   return map[word];
 }
 
-/** Looks for a vendor exam code such as "AZ-104" or "SY0-701" in the header. */
+/**
+ * Vendor exam codes, covering the shapes actually in use:
+ *   AZ-104, MS-900   (Microsoft)   SY0-701, N10-009  (CompTIA)
+ *   SAA-C03, DVA-C02 (AWS)         220-1101, 200-301 (CompTIA A+, Cisco)
+ *   1Z0-808          (Oracle)
+ */
+const EXAM_CODE =
+  /\b(\d[A-Z]\d-\d{2,4}|[A-Z]{1,4}\d{0,2}[- ]\d{2,4}|[A-Z]{2,4}[- ][A-Z]\d{2,3}|\d{3}-\d{3,4})\b/;
+
+/**
+ * Tokens shaped exactly like an exam code that never are one. Without this,
+ * a question mentioning SHA-256 or RFC-1918 can win over the real code.
+ */
+const NOT_EXAM_CODES = /^(SHA|AES|RSA|MD|RFC|ISO|IEC|IEEE|ANSI|NIST|FIPS|TLS|SSL|IPV|UTF|X)\b/;
+
+/**
+ * Reads the vendor exam code from the preamble — the text before the first
+ * question block. Restricting the search to the header is what keeps a
+ * "SHA-256" inside an answer option from being mistaken for the exam code;
+ * codes are declared in the file's title, never mid-question.
+ */
 function guessExamCode(text: string): string | undefined {
-  const head = text.slice(0, 2000);
-  const match = /\b([A-Z]{2,4}[- ]?\d{2,4}(?:-\d{2})?)\b/.exec(head);
-  return match ? match[1].replace(/\s+/g, '-').toUpperCase() : undefined;
+  const firstQuestion = text.search(QUESTION_HEADER_ANYWHERE);
+  const preamble = (firstQuestion > 0 ? text.slice(0, firstQuestion) : text.slice(0, 400)).slice(
+    0,
+    2000,
+  );
+
+  // Scan every candidate, not just the first, so a denylisted token does not
+  // shadow the real code that follows it.
+  const pattern = new RegExp(EXAM_CODE.source, 'g');
+  for (const match of preamble.matchAll(pattern)) {
+    const code = match[1].replace(/\s+/g, '-').toUpperCase();
+    if (!NOT_EXAM_CODES.test(code)) return code;
+  }
+  return undefined;
 }
 
 function collateTopic(id: string): number {

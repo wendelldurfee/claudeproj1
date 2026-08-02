@@ -97,7 +97,7 @@ export default function ImportScreen() {
           JSON banks, Moodle GIFT, Aiken, and CSV/TSV. The format is detected automatically.
         </Text>
         <Text style={{ color: theme.textFaint, fontSize: fontSize.xs, lineHeight: 18 }}>
-          Files are parsed on this device and never uploaded. Import only material you have the
+          Files are read on this device and never sent to a server. Use only material you have the
           right to use.
         </Text>
       </Card>
@@ -185,7 +185,7 @@ export default function ImportScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <Ionicons name="checkmark-circle" size={20} color={theme.success} />
             <Text style={{ color: theme.text, fontSize: fontSize.md, fontWeight: '700' }}>
-              Imported {done.code}
+              Uploaded {done.code}
             </Text>
           </View>
           <Text style={{ color: theme.textMuted, fontSize: fontSize.sm }}>
@@ -213,8 +213,8 @@ export default function ImportScreen() {
       )}
 
       <Button
-        label={busy ? 'Importing…' : 'Import bank'}
-        icon="download-outline"
+        label={busy ? 'Uploading…' : 'Upload Exam'}
+        icon="cloud-upload-outline"
         loading={busy}
         disabled={raw.trim().length === 0 || detected === null}
         onPress={() => void runImport()}

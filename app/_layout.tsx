@@ -83,7 +83,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" options={{ title: 'Exam Library' }} />
-          <Stack.Screen name="import" options={{ title: 'Import Question Bank' }} />
+          <Stack.Screen name="import" options={{ title: 'Upload Exam' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
           <Stack.Screen name="stats" options={{ title: 'Study Statistics' }} />
           <Stack.Screen name="exam/[bankId]" options={{ title: 'Configure Exam' }} />

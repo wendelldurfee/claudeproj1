@@ -152,6 +152,48 @@ A (9%)
   });
 });
 
+describe('exam code detection', () => {
+  const withHeader = (header: string) =>
+    importExamTopics(`${header}\n\nQuestion #1\nPick one.\nA. Yes\nB. No\nCorrect Answer: A\n`).bank
+      .code;
+
+  it('reads the common vendor code shapes', () => {
+    expect(withHeader('AZ-104 Microsoft Azure Administrator')).toBe('AZ-104');
+    expect(withHeader('SY0-701 CompTIA Security+')).toBe('SY0-701');
+    expect(withHeader('N10-009 CompTIA Network+')).toBe('N10-009');
+    expect(withHeader('SAA-C03 AWS Solutions Architect')).toBe('SAA-C03');
+    expect(withHeader('220-1101 CompTIA A+ Core 1')).toBe('220-1101');
+    expect(withHeader('1Z0-808 Java SE Programmer')).toBe('1Z0-808');
+  });
+
+  it('ignores code-shaped tokens inside questions', () => {
+    // "SHA-256" appears in an option and previously won over the real code.
+    const { bank } = importExamTopics(`
+SY0-701 Security Practice
+
+Question #1
+
+Which two are hashing algorithms? (Choose two.)
+
+A. MD5
+B. AES
+C. SHA-256
+D. RSA
+
+Correct Answer: AC
+`);
+    expect(bank.code).toBe('SY0-701');
+  });
+
+  it('skips a denylisted token in the preamble and takes the real code after it', () => {
+    expect(withHeader('SHA-256 and RFC-1918 notes for AZ-104')).toBe('AZ-104');
+  });
+
+  it('falls back to a placeholder when no code is present', () => {
+    expect(withHeader('Practice questions')).toBe('DUMP');
+  });
+});
+
 describe('JSON importer', () => {
   it('reads a full bank object', () => {
     const { bank } = importJson(
