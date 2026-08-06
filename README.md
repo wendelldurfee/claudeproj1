@@ -58,46 +58,60 @@ Everything is stored locally in SQLite. The app makes no network requests.
 
 ---
 
-## Running it
+## Getting it onto a phone
+
+### Fastest — no compiling at all
+
+Install **Expo Go** from the App Store or Play Store, then:
 
 ```bash
 npm install
-npx expo start          # then press 'a' for Android, 'i' for iOS, or scan the QR code
+npx expo start        # scan the QR code with the phone
 ```
 
-`npx expo start` runs the app in **Expo Go**, which is enough for everything except the native
-SQLite build — for that, and for anything you intend to ship, use a development or production
-build below.
+The phone and computer need to be on the same network. Everything works in Expo Go: SQLite,
+importing, all question types. This is the right way to try it and to develop against it.
 
-### Quality gates
+Two caveats. Expo Go is a shared host app, so the icon on the home screen is Expo's, not the
+app's, and it can't be shared with anyone else. For a standalone installable app, build below.
 
-```bash
-npm test          # 130 unit tests over the exam engine and importers
-npm run typecheck # tsc --noEmit
-```
+### Standalone app — EAS Build (no Android Studio or Xcode needed)
 
----
-
-## Building for devices
-
-### Option A — EAS Build (no local Android Studio or Xcode needed)
+Builds run on Expo's servers, so this works from any OS, including building iOS from Windows or
+Linux. Needs a free Expo account.
 
 ```bash
 npm install -g eas-cli
 eas login
 eas build:configure
 
-npm run build:apk       # Android .apk for sideloading / internal testing
-npm run build:android   # Android .aab for Google Play
-npm run build:ios       # iOS .ipa (requires an Apple Developer account)
+npm run build:apk       # Android .apk — install straight onto the phone
+npm run build:android   # Android .aab — for Play Store submission
+npm run build:ios       # iOS .ipa
 ```
 
-Profiles are defined in `eas.json`. iOS builds are signed in the cloud; EAS prompts for
-credentials on the first run.
+When the build finishes, EAS prints a URL and a QR code.
 
-### Option B — Local native builds
+**Android** is the easy path: open the URL on the phone, download the `.apk`, and allow
+"install unknown apps" when prompted. No developer account and no signing setup — EAS generates
+a keystore on first run.
 
-`ios/` and `android/` are generated rather than committed, so create them first:
+**iOS is different, and there is no way around it.** Apple does not allow installing an app on a
+physical iPhone without a signing identity:
+
+- **Apple Developer Program ($99/year)** — `npm run build:ios` produces an installable `.ipa`.
+  Add the device UDID to the provisioning profile for direct install, or push to TestFlight.
+- **Free Apple ID** — you can side-load onto your own device by building locally in Xcode
+  (below), but the app expires after 7 days and must be re-installed.
+- **No account** — `eas build --platform ios --profile preview` builds a **simulator** binary.
+  It runs in the macOS iOS Simulator only, never on a physical iPhone.
+
+Profiles live in `eas.json`. The free EAS tier queues builds, so expect to wait during busy
+periods.
+
+### Standalone app — local native builds
+
+`ios/` and `android/` are generated from `app.json` rather than committed, so create them first:
 
 ```bash
 npx expo prebuild --clean
@@ -106,21 +120,31 @@ npx expo prebuild --clean
 **Android** (needs JDK 17+ and the Android SDK):
 
 ```bash
-npm run android                       # debug build onto a device/emulator
-cd android && ./gradlew assembleRelease   # → android/app/build/outputs/apk/release/
-cd android && ./gradlew bundleRelease     # → .aab for Play Store submission
+npm run android                             # debug build onto a connected device/emulator
+cd android && ./gradlew assembleRelease     # → android/app/build/outputs/apk/release/
+cd android && ./gradlew bundleRelease       # → .aab for Play Store submission
 ```
 
-**iOS** (needs macOS and Xcode 15+):
+**iOS** (needs macOS and Xcode 16+ — iOS cannot be built on Windows or Linux):
 
 ```bash
 cd ios && pod install
-npm run ios                           # debug build onto a simulator/device
-open ios/vceexamsimulator.xcworkspace # then Product → Archive for App Store / TestFlight
+npm run ios                                 # debug build onto a simulator or device
+open ios/VCEExamSimulator.xcworkspace       # then Product → Archive to distribute
 ```
 
+`pod install` creates the `.xcworkspace`; open that, never the `.xcodeproj`.
+
 Bundle identifier and package name are both `com.vcesim.examsimulator` — change them in
-`app.json` before publishing under your own account.
+`app.json` before publishing under your own account, along with `name` and `slug`.
+
+### Quality gates
+
+```bash
+npm test          # 144 unit tests over the exam engine and importers
+npm run typecheck # tsc --noEmit
+npx expo-doctor   # dependency and native config check
+```
 
 ---
 
@@ -233,11 +257,15 @@ that works with screen readers. Grading is identical either way.
 
 ## Verification
 
-- 130 unit tests across grading, the session engine, scoring/statistics, and all five importers
+- 144 unit tests across grading, the session engine, scoring/statistics, and all five importers
 - `tsc --noEmit` clean under `strict`
+- `expo-doctor` clean, apart from two checks that need network access to Expo's servers
 - Bundles verified for Android (`4.6 MB` Hermes bytecode), iOS (`4.4 MB`) and web
+- `expo prebuild` verified for both platforms: the Android Gradle project and the
+  `VCEExamSimulator.xcodeproj` generate without warnings
 - Full flows driven in a browser against the real build: library → setup → exam → answer →
   submit → score report → answer review, with no runtime errors
+- The importer tested against a real 300-question dump PDF converted to text
 
 ---
 

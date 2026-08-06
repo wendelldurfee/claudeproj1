@@ -26,8 +26,7 @@
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0B1220"
-      },
-      "edgeToEdgeEnabled": true
+      }
     },
     "web": {
       "bundler": "metro",
@@ -36,6 +35,7 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
+      "expo-system-ui",
       [
         "expo-document-picker",
         {
