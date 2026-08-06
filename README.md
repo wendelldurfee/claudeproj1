@@ -66,14 +66,26 @@ Install **Expo Go** from the App Store or Play Store, then:
 
 ```bash
 npm install
-npx expo start        # scan the QR code with the phone
+npx expo start        # the QR code prints in this terminal
 ```
 
-The phone and computer need to be on the same network. Everything works in Expo Go: SQLite,
-importing, all question types. This is the right way to try it and to develop against it.
+The QR appears in the terminal a few seconds after Metro starts. On **Android**, open Expo Go
+and use its "Scan QR code". On **iOS**, use the built-in **Camera** app — Apple required Expo to
+remove the scanner from Expo Go on iOS. Either way the phone and computer must be on the same
+network; on guest or corporate Wi-Fi that blocks device-to-device traffic, use
+`npx expo start --tunnel`.
 
-Two caveats. Expo Go is a shared host app, so the icon on the home screen is Expo's, not the
-app's, and it can't be shared with anyone else. For a standalone installable app, build below.
+Everything works in Expo Go: SQLite, uploading banks, all question types.
+
+Two caveats. Expo Go is a shared host app, so the home-screen icon is Expo's, not the app's, and
+it can't be handed to anyone else. For a standalone installable app, build below.
+
+> **Why this project is on SDK 56, not 57.** Expo Go only ever supports one SDK — whatever the
+> store build ships. At the time of writing, Expo is still waiting on App Store and Play Store
+> approval for the SDK 57 build, so an SDK 57 project fails in Expo Go with *"Project is
+> incompatible with this version of Expo Go"*. Pinning to 56 keeps the zero-compile path
+> working. Once Expo Go 57 lands in the stores, upgrade with `npx expo install expo@^57 --fix`.
+> Development builds and EAS builds are unaffected by this and work on any SDK.
 
 ### Standalone app — EAS Build (no Android Studio or Xcode needed)
 
@@ -259,7 +271,8 @@ that works with screen readers. Grading is identical either way.
 
 - 144 unit tests across grading, the session engine, scoring/statistics, and all five importers
 - `tsc --noEmit` clean under `strict`
-- `expo-doctor` clean, apart from two checks that need network access to Expo's servers
+- `expo-doctor` clean on Expo SDK 56 (React Native 0.85, React 19.2), apart from two checks that
+  need network access to Expo's servers
 - Bundles verified for Android (`4.6 MB` Hermes bytecode), iOS (`4.4 MB`) and web
 - `expo prebuild` verified for both platforms: the Android Gradle project and the
   `VCEExamSimulator.xcodeproj` generate without warnings
