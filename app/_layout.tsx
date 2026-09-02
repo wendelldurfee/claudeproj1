@@ -82,7 +82,8 @@ export default function RootLayout() {
             headerShadowVisible: false,
           }}
         >
-          <Stack.Screen name="index" options={{ title: 'Exam Library' }} />
+          {/* The home screen renders its own banner hero instead of the plain header. */}
+          <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="import" options={{ title: 'Upload Exam' }} />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
           <Stack.Screen name="stats" options={{ title: 'Study Statistics' }} />

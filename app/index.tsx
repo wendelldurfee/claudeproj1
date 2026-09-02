@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -60,12 +60,44 @@ export default function LibraryScreen() {
   return (
     <ScrollView
       contentContainerStyle={{
-        padding: spacing.lg,
+        paddingHorizontal: spacing.lg,
+        paddingTop: insets.top + spacing.md,
         paddingBottom: insets.bottom + spacing.xxl,
         gap: spacing.lg,
       }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={theme.textMuted} />}
     >
+      <ImageBackground
+        source={require('../assets/banner.jpg')}
+        accessibilityRole="image"
+        accessibilityLabel="ARJ Exam Simulator"
+        style={{ borderRadius: radius.lg, overflow: 'hidden' }}
+        imageStyle={{ borderRadius: radius.lg }}
+      >
+        <View
+          style={{
+            paddingHorizontal: spacing.xl,
+            paddingVertical: spacing.xxl,
+            gap: spacing.xs,
+            backgroundColor: 'rgba(5, 12, 28, 0.45)',
+          }}
+        >
+          <Text
+            style={{
+              color: '#FFFFFF',
+              fontSize: fontSize.xxl,
+              fontWeight: '800',
+              letterSpacing: 0.3,
+            }}
+          >
+            ARJ Exam Simulator
+          </Text>
+          <Text style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: fontSize.md }}>
+            Offline practice exams, ready when you are.
+          </Text>
+        </View>
+      </ImageBackground>
+
       {resumable && (
         <Card style={{ borderColor: theme.primary, gap: spacing.md }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
