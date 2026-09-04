@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#0B1220"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vcesim.examsimulator",
@@ -45,6 +47,13 @@
     ],
     "experiments": {
       "typedRoutes": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f5618116-9c9c-4583-a979-b7a96365db95"
+      }
+    },
+    "owner": "wendelldurfee"
   }
 }
