@@ -3,7 +3,7 @@ import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'reac
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useKeepAwake } from 'expo-keep-awake';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
 import { gradeQuestion, isAnswered } from '../../src/core/grading';
 import { progress, remainingSec } from '../../src/core/session';
@@ -33,8 +33,15 @@ export default function SessionScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const autoSubmitted = useRef(false);
 
-  // Nobody wants the screen dimming mid-question.
-  useKeepAwake();
+  // Nobody wants the screen dimming mid-question. Deactivation waits for the
+  // activation promise so a fast exit can't hit "wake lock has not activated yet".
+  useEffect(() => {
+    const tag = 'exam-session';
+    const activation = activateKeepAwakeAsync(tag).catch(() => {});
+    return () => {
+      void activation.then(() => deactivateKeepAwake(tag).catch(() => {}));
+    };
+  }, []);
 
   useEffect(() => {
     void resume(sessionId);
