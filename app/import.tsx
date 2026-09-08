@@ -48,9 +48,19 @@ export default function ImportScreen() {
 
       const asset = picked.assets[0];
       const contents = new File(asset.uri).textSync();
+      const name = asset.name ?? '';
+
+      if (looksBinary(contents)) {
+        setError(
+          name.toLowerCase().endsWith('.vce')
+            ? '“.vce” is a proprietary binary format this app cannot read. Open it in a VCE player, print or export the questions to text or PDF, and convert that to one of the supported text formats (dump text, JSON, GIFT, Aiken, CSV).'
+            : 'That looks like a binary file, not text. Supported formats are text-based: dump text, JSON, GIFT, Aiken, CSV.',
+        );
+        return;
+      }
 
       setRaw(contents);
-      setFileName(asset.name ?? '');
+      setFileName(name);
       setDone(null);
     } catch (err) {
       setError(`Could not read that file: ${(err as Error).message}`);
@@ -95,6 +105,10 @@ export default function ImportScreen() {
         <Text style={{ color: theme.textMuted, fontSize: fontSize.sm, lineHeight: 20 }}>
           Dump text (the “Question #1 / Correct Answer:” layout used by community exam sites),
           JSON banks, Moodle GIFT, Aiken, and CSV/TSV. The format is detected automatically.
+        </Text>
+        <Text style={{ color: theme.textMuted, fontSize: fontSize.sm, lineHeight: 20 }}>
+          Proprietary .vce binaries are not supported — export the questions to text or PDF from a
+          VCE player first.
         </Text>
         <Text style={{ color: theme.textFaint, fontSize: fontSize.xs, lineHeight: 18 }}>
           Files are read on this device and never sent to a server. Use only material you have the
@@ -221,6 +235,18 @@ export default function ImportScreen() {
       />
     </ScrollView>
   );
+}
+
+function looksBinary(text: string): boolean {
+  const sample = text.slice(0, 8000);
+  if (sample.length === 0) return false;
+  if (sample.includes('')) return true;
+  let control = 0;
+  for (const ch of sample) {
+    const code = ch.charCodeAt(0);
+    if (code < 32 && ch !== '\n' && ch !== '\r' && ch !== '\t') control++;
+  }
+  return control / sample.length > 0.05;
 }
 
 function Field({
