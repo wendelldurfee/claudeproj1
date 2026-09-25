@@ -5,7 +5,8 @@ import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FORMAT_LABEL, detectFormat, type BankFormat } from '../src/core/import';
+import { FORMAT_LABEL, detectFormat, isVceFile, type BankFormat } from '../src/core/import';
+import { readPickedBytes, readPickedText } from '../src/core/import/file';
 import { useLibraryStore } from '../src/store/libraryStore';
 import { Badge, Button, Card, ErrorNotice, SectionTitle } from '../src/ui/components/common';
 import { fontSize, monoFont, radius, spacing, useTheme } from '../src/ui/theme';
@@ -17,10 +18,11 @@ import { fontSize, monoFont, radius, spacing, useTheme } from '../src/ui/theme';
 export default function ImportScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { importFromText, lastImportWarnings } = useLibraryStore();
+  const { importFromText, importFromVce, lastImportWarnings } = useLibraryStore();
 
   const [raw, setRaw] = useState('');
   const [fileName, setFileName] = useState('');
+  const [vceBytes, setVceBytes] = useState<Uint8Array | null>(null);
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,20 +49,17 @@ export default function ImportScreen() {
       if (picked.canceled || !picked.assets?.[0]) return;
 
       const asset = picked.assets[0];
-      const contents = new File(asset.uri).textSync();
+      setRaw('');
+      setFileName('');
+      setDone(null);
       const name = asset.name ?? '';
-
-      if (looksBinary(contents)) {
-        setError(
-          name.toLowerCase().endsWith('.vce')
-            ? '“.vce” is a proprietary binary format this app cannot read. Open it in a VCE player, print or export the questions to text or PDF, and convert that to one of the supported text formats (dump text, JSON, GIFT, Aiken, CSV).'
-            : 'That looks like a binary file, not text. Supported formats are text-based: dump text, JSON, GIFT, Aiken, CSV.',
-        );
-        return;
-      }
-
-      setRaw(contents);
       setFileName(name);
+      if (isVceFile(name)) {
+        setVceBytes(await readPickedBytes(asset, (uri) => new File(uri).bytes()));
+      } else {
+        setRaw(await readPickedText(asset, (uri) => new File(uri).text()));
+        setVceBytes(null);
+      }
       setDone(null);
     } catch (err) {
       setError(`Could not read that file: ${(err as Error).message}`);
@@ -72,7 +71,7 @@ export default function ImportScreen() {
     setError(null);
     setDone(null);
     try {
-      const bank = await importFromText(raw, {
+      const bank = vceBytes ? await importFromVce(vceBytes, fileName) : await importFromText(raw, {
         fileName,
         code: code.trim() || undefined,
         title: title.trim() || undefined,
@@ -80,6 +79,7 @@ export default function ImportScreen() {
       setDone({ code: bank.code, count: bank.questions.length });
       setRaw('');
       setFileName('');
+      setVceBytes(null);
       setCode('');
       setTitle('');
     } catch (err) {
@@ -107,8 +107,8 @@ export default function ImportScreen() {
           JSON banks, Moodle GIFT, Aiken, and CSV/TSV. The format is detected automatically.
         </Text>
         <Text style={{ color: theme.textMuted, fontSize: fontSize.sm, lineHeight: 20 }}>
-          Proprietary .vce binaries are not supported — export the questions to text or PDF from a
-          VCE player first.
+          Binary .vce files from VCE Exam Simulator versions 6.0–6.2 can be imported directly.
+          PDF files require a supported text export with its answer key.
         </Text>
         <Text style={{ color: theme.textFaint, fontSize: fontSize.xs, lineHeight: 18 }}>
           Files are read on this device and never sent to a server. Use only material you have the
@@ -157,6 +157,7 @@ export default function ImportScreen() {
             onPress={() => {
               setRaw('');
               setFileName('');
+              setVceBytes(null);
             }}
             hitSlop={8}
           >
@@ -170,6 +171,15 @@ export default function ImportScreen() {
           <Ionicons name="checkmark-circle" size={16} color={theme.success} />
           <Text style={{ color: theme.textMuted, fontSize: fontSize.sm }}>
             Detected: <Text style={{ color: theme.text, fontWeight: '700' }}>{FORMAT_LABEL[detected]}</Text>
+          </Text>
+        </View>
+      )}
+
+      {vceBytes && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <Ionicons name="checkmark-circle" size={16} color={theme.success} />
+          <Text style={{ color: theme.textMuted, fontSize: fontSize.sm }}>
+            Detected: <Text style={{ color: theme.text, fontWeight: '700' }}>VCE exam</Text>
           </Text>
         </View>
       )}
@@ -230,23 +240,11 @@ export default function ImportScreen() {
         label={busy ? 'Uploading…' : 'Upload Exam'}
         icon="cloud-upload-outline"
         loading={busy}
-        disabled={raw.trim().length === 0 || detected === null}
+        disabled={!vceBytes && (raw.trim().length === 0 || detected === null)}
         onPress={() => void runImport()}
       />
     </ScrollView>
   );
-}
-
-function looksBinary(text: string): boolean {
-  const sample = text.slice(0, 8000);
-  if (sample.length === 0) return false;
-  if (sample.includes('')) return true;
-  let control = 0;
-  for (const ch of sample) {
-    const code = ch.charCodeAt(0);
-    if (code < 32 && ch !== '\n' && ch !== '\r' && ch !== '\t') control++;
-  }
-  return control / sample.length > 0.05;
 }
 
 function Field({

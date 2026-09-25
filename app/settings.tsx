@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useExamStore } from '../src/store/examStore';
 import { resetDatabase } from '../src/db/database';
 import { useLibraryStore } from '../src/store/libraryStore';
 import { Button, Card, SectionTitle, StatRow } from '../src/ui/components/common';
@@ -29,6 +30,7 @@ export default function SettingsScreen() {
 
     setBusy(true);
     try {
+      useExamStore.getState().clear();
       await resetDatabase();
       await seedSamples();
       await refresh();

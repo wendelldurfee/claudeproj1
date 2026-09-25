@@ -1,5 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { getDatabase } from './database';
+import { getDatabase, writeDatabase } from './database';
 import type { QuestionHistory } from '../core/session';
 import type {
   AttemptResult,
@@ -112,56 +112,64 @@ export async function getBank(bankId: string): Promise<ExamBank | null> {
  * of the stem) has not changed.
  */
 export async function saveBank(bank: ExamBank): Promise<void> {
-  const db = await getDatabase();
+  await writeDatabase(async (db) => {
 
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      `INSERT OR REPLACE INTO banks
-        (id, code, title, vendor, description, passing_score, time_limit_minutes,
-         question_count, version, source, imported_at, sections_json, case_studies_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        bank.id,
-        bank.code,
-        bank.title,
-        bank.vendor ?? null,
-        bank.description ?? null,
-        bank.passingScore,
-        bank.timeLimitMinutes,
-        bank.questionCount ?? bank.questions.length,
-        bank.version ?? null,
-        bank.source ?? null,
-        bank.importedAt ?? Date.now(),
-        JSON.stringify(bank.sections ?? []),
-        JSON.stringify(bank.caseStudies ?? []),
-      ],
-    );
-
-    await db.runAsync('DELETE FROM questions WHERE bank_id = ?', [bank.id]);
-
-    for (const question of bank.questions) {
+    await db.withTransactionAsync(async () => {
       await db.runAsync(
-        `INSERT OR REPLACE INTO questions
-          (id, bank_id, section_id, type, number, stem, payload_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO banks
+          (id, code, title, vendor, description, passing_score, time_limit_minutes,
+           question_count, version, source, imported_at, sections_json, case_studies_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           code = excluded.code, title = excluded.title, vendor = excluded.vendor,
+           description = excluded.description, passing_score = excluded.passing_score,
+           time_limit_minutes = excluded.time_limit_minutes, question_count = excluded.question_count,
+           version = excluded.version, source = excluded.source, imported_at = excluded.imported_at,
+           sections_json = excluded.sections_json, case_studies_json = excluded.case_studies_json`,
         [
-          question.id,
           bank.id,
-          question.sectionId ?? null,
-          question.type,
-          question.number ?? null,
-          question.stem,
-          JSON.stringify(question),
+          bank.code,
+          bank.title,
+          bank.vendor ?? null,
+          bank.description ?? null,
+          bank.passingScore,
+          bank.timeLimitMinutes,
+          bank.questionCount ?? bank.questions.length,
+          bank.version ?? null,
+          bank.source ?? null,
+          bank.importedAt ?? Date.now(),
+          JSON.stringify(bank.sections ?? []),
+          JSON.stringify(bank.caseStudies ?? []),
         ],
       );
-    }
+
+      await db.runAsync('DELETE FROM questions WHERE bank_id = ?', [bank.id]);
+
+      for (const question of bank.questions) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO questions
+            (id, bank_id, section_id, type, number, stem, payload_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            question.id,
+            bank.id,
+            question.sectionId ?? null,
+            question.type,
+            question.number ?? null,
+            question.stem,
+            JSON.stringify(question),
+          ],
+        );
+      }
+    });
   });
 }
 
 /** Cascades to questions, sessions, attempts, stats and notes. */
 export async function deleteBank(bankId: string): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync('DELETE FROM banks WHERE id = ?', [bankId]);
+  await writeDatabase(async (db) => {
+    await db.runAsync('DELETE FROM banks WHERE id = ?', [bankId]);
+  });
 }
 
 export async function countQuestions(bankId: string): Promise<number> {
@@ -178,7 +186,10 @@ export async function countQuestions(bankId: string): Promise<number> {
 // ---------------------------------------------------------------------------
 
 export async function saveSession(state: SessionState): Promise<void> {
-  const db = await getDatabase();
+  await writeDatabase((db) => writeSession(db, state));
+}
+
+async function writeSession(db: SQLiteDatabase, state: SessionState): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO sessions (id, bank_id, mode, status, started_at, updated_at, state_json)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -209,21 +220,22 @@ export async function getResumableSession(bankId?: string): Promise<SessionState
   const row = bankId
     ? await db.getFirstAsync<{ state_json: string }>(
         `SELECT state_json FROM sessions
-         WHERE status IN ('active', 'paused') AND bank_id = ?
+         WHERE (status IN ('active', 'paused') OR (status = 'submitted' AND NOT EXISTS (SELECT 1 FROM attempts WHERE session_id = sessions.id))) AND bank_id = ?
          ORDER BY updated_at DESC LIMIT 1`,
         [bankId],
       )
     : await db.getFirstAsync<{ state_json: string }>(
         `SELECT state_json FROM sessions
-         WHERE status IN ('active', 'paused')
+         WHERE (status IN ('active', 'paused') OR (status = 'submitted' AND NOT EXISTS (SELECT 1 FROM attempts WHERE session_id = sessions.id)))
          ORDER BY updated_at DESC LIMIT 1`,
       );
   return row ? (JSON.parse(row.state_json) as SessionState) : null;
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync('DELETE FROM sessions WHERE id = ?', [sessionId]);
+  await writeDatabase(async (db) => {
+    await db.runAsync('DELETE FROM sessions WHERE id = ?', [sessionId]);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -231,32 +243,40 @@ export async function deleteSession(sessionId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /** Stores the score report and folds it into the per-question stats. */
-export async function saveAttempt(result: AttemptResult): Promise<void> {
-  const db = await getDatabase();
+export async function saveAttempt(result: AttemptResult, session?: SessionState): Promise<void> {
+  await writeDatabase(async (db) => {
 
-  await db.withTransactionAsync(async () => {
-    await db.runAsync(
-      `INSERT OR REPLACE INTO attempts
-        (id, session_id, bank_id, mode, percent, passed, started_at, finished_at, duration_sec, result_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        result.id,
-        result.sessionId,
-        result.bankId,
-        result.mode,
-        result.percent,
-        result.passed ? 1 : 0,
-        result.startedAt,
-        result.finishedAt,
-        result.durationSec,
-        JSON.stringify(result),
-      ],
-    );
+    await db.withTransactionAsync(async () => {
+      if (session) {
+        if (session.id !== result.sessionId || session.bankId !== result.bankId || session.status !== 'submitted') {
+          throw new Error('The score report does not match the submitted session.');
+        }
+        await writeSession(db, session);
+      }
+      const inserted = await db.runAsync(
+        `INSERT INTO attempts
+          (id, session_id, bank_id, mode, percent, passed, started_at, finished_at, duration_sec, result_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+        [
+          result.id,
+          result.sessionId,
+          result.bankId,
+          result.mode,
+          result.percent,
+          result.passed ? 1 : 0,
+          result.startedAt,
+          result.finishedAt,
+          result.durationSec,
+          JSON.stringify(result),
+        ],
+      );
 
-    for (const item of result.items) {
-      if (!item.answered) continue;
-      await applyQuestionOutcome(db, result.bankId, item.questionId, item.correct, result.finishedAt);
-    }
+      if (inserted.changes === 0) return;
+      for (const item of result.items) {
+        if (!item.answered) continue;
+        await applyQuestionOutcome(db, result.bankId, item.questionId, item.correct, result.finishedAt);
+      }
+    });
   });
 }
 
@@ -304,8 +324,9 @@ export async function getAttempt(attemptId: string): Promise<AttemptResult | nul
 }
 
 export async function deleteAttempt(attemptId: string): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync('DELETE FROM attempts WHERE id = ?', [attemptId]);
+  await writeDatabase(async (db) => {
+    await db.runAsync('DELETE FROM attempts WHERE id = ?', [attemptId]);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -346,13 +367,14 @@ export async function setQuestionMarked(
   questionId: string,
   marked: boolean,
 ): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync(
-    `INSERT INTO question_stats (question_id, bank_id, marked)
-     VALUES (?, ?, ?)
-     ON CONFLICT (question_id) DO UPDATE SET marked = excluded.marked`,
-    [questionId, bankId, marked ? 1 : 0],
-  );
+  await writeDatabase(async (db) => {
+    await db.runAsync(
+      `INSERT INTO question_stats (question_id, bank_id, marked)
+       VALUES (?, ?, ?)
+       ON CONFLICT (question_id) DO UPDATE SET marked = excluded.marked`,
+      [questionId, bankId, marked ? 1 : 0],
+    );
+  });
 }
 
 export async function countByFilter(bankId: string): Promise<{
@@ -399,15 +421,16 @@ export async function getNote(questionId: string): Promise<string | null> {
 }
 
 export async function saveNote(bankId: string, questionId: string, body: string): Promise<void> {
-  const db = await getDatabase();
-  if (body.trim().length === 0) {
-    await db.runAsync('DELETE FROM notes WHERE question_id = ?', [questionId]);
-    return;
-  }
-  await db.runAsync(
-    `INSERT OR REPLACE INTO notes (question_id, bank_id, body, updated_at) VALUES (?, ?, ?, ?)`,
-    [questionId, bankId, body, Date.now()],
-  );
+  await writeDatabase(async (db) => {
+    if (body.trim().length === 0) {
+      await db.runAsync('DELETE FROM notes WHERE question_id = ?', [questionId]);
+      return;
+    }
+    await db.runAsync(
+      `INSERT OR REPLACE INTO notes (question_id, bank_id, body, updated_at) VALUES (?, ?, ?, ?)`,
+      [questionId, bankId, body, Date.now()],
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -424,8 +447,9 @@ export async function getSetting(key: string): Promise<string | null> {
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  const db = await getDatabase();
-  await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+  await writeDatabase(async (db) => {
+    await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+  });
 }
 
 function parseJson<T>(raw: string, fallback: T): T {

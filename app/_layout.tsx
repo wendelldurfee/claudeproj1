@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { AppState, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { getDatabase } from '../src/db/database';
+import { useExamStore } from '../src/store/examStore';
 import { useLibraryStore } from '../src/store/libraryStore';
 import { Loading } from '../src/ui/components/common';
 import { DialogHost } from '../src/ui/components/DialogHost';
@@ -38,6 +39,15 @@ export default function RootLayout() {
       cancelled = true;
     };
   }, [seedSamples]);
+
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', (state) => {
+      const exam = useExamStore.getState();
+      if (state === 'active') exam.dispatch({ type: 'TICK' });
+      else void exam.persist().catch(() => {});
+    });
+    return () => listener.remove();
+  }, []);
 
   if (!ready) {
     return (

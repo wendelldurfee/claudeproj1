@@ -11,6 +11,11 @@ export { importCsv, parseCsv } from './csv';
 export { importExamTopics } from './examtopics';
 export { importGift } from './gift';
 export { importJson, importJsonObject } from './json';
+export { importVce } from './vce';
+
+export function isVceFile(fileName: string): boolean {
+  return /\.vce$/i.test(fileName);
+}
 
 /** Every format the import screen can ingest. */
 export type BankFormat = 'json' | 'examtopics' | 'gift' | 'aiken' | 'csv';

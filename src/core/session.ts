@@ -222,6 +222,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
 
   switch (action.type) {
     case 'ANSWER': {
+      if (state.status !== 'active' || state.items[action.index]?.revealed) return state;
       const billed = billTime(state, now);
       const items = billed.items.slice();
       const item = items[action.index];
@@ -247,6 +248,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
     }
 
     case 'REVEAL': {
+      if (state.status !== 'active' || !state.config.instantFeedback) return state;
       const items = state.items.slice();
       const item = items[action.index];
       if (!item) return state;

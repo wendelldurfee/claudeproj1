@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { importBank, type ImportOptions } from '../core/import';
+import { useExamStore } from './examStore';
+import { importBank, importVce, type ImportOptions } from '../core/import';
 import type { ExamBank } from '../core/types';
 import {
   deleteBank,
@@ -24,6 +25,7 @@ interface LibraryState {
   /** Copies the bundled sample banks in on first launch. */
   seedSamples: () => Promise<void>;
   importFromText: (raw: string, options?: ImportOptions) => Promise<ExamBank>;
+  importFromVce: (raw: Uint8Array, fileName: string) => Promise<ExamBank>;
   install: (bank: ExamBank) => Promise<void>;
   remove: (bankId: string) => Promise<void>;
 }
@@ -76,12 +78,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
+  importFromVce: async (raw, fileName) => {
+    set({ loading: true, error: null, lastImportWarnings: [] });
+    try {
+      const { bank, warnings } = importVce(raw, fileName);
+      await saveBank(bank);
+      set({ banks: await listBanks(), loading: false, lastImportWarnings: warnings });
+      return bank;
+    } catch (err) {
+      set({ error: (err as Error).message, loading: false });
+      throw err;
+    }
+  },
+
   install: async (bank) => {
     await saveBank(bank);
     set({ banks: await listBanks() });
   },
 
   remove: async (bankId) => {
+    if (useExamStore.getState().session?.bankId === bankId) useExamStore.getState().clear();
     await deleteBank(bankId);
     set({ banks: await listBanks() });
   },

@@ -10,6 +10,15 @@ const DB_NAME = 'vcesim.db';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
+// Serialize mutations on the shared connection so unrelated async writes
+// cannot accidentally join or nest inside another operation's transaction.
+let writes: Promise<unknown> = Promise.resolve();
+export function writeDatabase<T>(work: (db: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> {
+  const next = writes.then(async () => work(await getDatabase()));
+  writes = next.catch(() => {});
+  return next;
+}
+
 export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) {
     dbPromise = openAndMigrate().catch((err) => {
@@ -47,8 +56,7 @@ async function openAndMigrate(): Promise<SQLite.SQLiteDatabase> {
 
 /** Wipes every table but keeps the schema. Used by Settings → Reset all data. */
 export async function resetDatabase(): Promise<void> {
-  const db = await getDatabase();
-  await db.withTransactionAsync(async () => {
+  await writeDatabase(async (db) => db.withTransactionAsync(async () => {
     await db.execAsync(`
       DELETE FROM notes;
       DELETE FROM question_stats;
@@ -57,7 +65,7 @@ export async function resetDatabase(): Promise<void> {
       DELETE FROM questions;
       DELETE FROM banks;
     `);
-  });
+  }));
 }
 
 /** Closes the handle so a fresh one is opened on next use (tests, hot reload). */

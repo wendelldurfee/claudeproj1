@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Question, Response } from '../../core/types';
+import { Button } from '../components/common';
 import { fontSize, radius, spacing, useTheme } from '../theme';
 
 /**
@@ -108,6 +109,10 @@ export function OrderingQuestion({
           </View>
         );
       })}
+
+      {!disabled && !revealed && response.length === 0 && (
+        <Button label="Use this order" variant="secondary" onPress={() => onChange(order.slice())} />
+      )}
 
       {revealed && (
         <View

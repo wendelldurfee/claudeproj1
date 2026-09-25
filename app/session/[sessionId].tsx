@@ -24,7 +24,7 @@ export default function SessionScreen() {
   const theme = useTheme();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
 
-  const { session, questions, loading, error, resume, dispatch, answer, toggleMark, submit } =
+  const { session, questions, loading, error, resume, dispatch, answer, toggleMark, submit, persist, saveError } =
     useExamStore();
 
   const [navigatorOpen, setNavigatorOpen] = useState(false);
@@ -32,6 +32,7 @@ export default function SessionScreen() {
   const [now, setNow] = useState(() => Date.now());
   const scrollRef = useRef<ScrollView>(null);
   const autoSubmitted = useRef(false);
+  const finishing = useRef(false);
 
   // Nobody wants the screen dimming mid-question. Deactivation waits for the
   // activation promise so a fast exit can't hit "wake lock has not activated yet".
@@ -44,6 +45,7 @@ export default function SessionScreen() {
   }, []);
 
   useEffect(() => {
+    autoSubmitted.current = false;
     void resume(sessionId);
   }, [sessionId, resume]);
 
@@ -63,7 +65,9 @@ export default function SessionScreen() {
 
   const finish = useCallback(
     async (reason: 'manual' | 'expired') => {
-      if (submitting) return;
+      if (finishing.current) return;
+      finishing.current = true;
+      autoSubmitted.current = true;
       setSubmitting(true);
       try {
         const result = await submit();
@@ -73,15 +77,19 @@ export default function SessionScreen() {
               ? Haptics.NotificationFeedbackType.Success
               : Haptics.NotificationFeedbackType.Warning,
           ).catch(() => {});
+          if (reason === 'expired') {
+            await alertDialog('Time expired', 'Your exam has been submitted automatically.');
+          }
           router.replace(`/results/${result.id}`);
         }
       } catch (err) {
         await alertDialog('Could not submit', (err as Error).message);
+      } finally {
+        finishing.current = false;
         setSubmitting(false);
       }
-      if (reason === 'expired') setSubmitting(false);
     },
-    [submit, submitting],
+    [submit],
   );
 
   // The reducer flips status to 'submitted' the moment the clock hits zero;
@@ -89,10 +97,7 @@ export default function SessionScreen() {
   useEffect(() => {
     if (session?.status === 'submitted' && !autoSubmitted.current && !submitting) {
       autoSubmitted.current = true;
-      void (async () => {
-        await alertDialog('Time expired', 'Your exam has been submitted automatically.');
-        await finish('expired');
-      })();
+      void finish(remainingSec(session) === 0 ? 'expired' : 'manual');
     }
   }, [session?.status, submitting, finish]);
 
@@ -100,22 +105,29 @@ export default function SessionScreen() {
     void (async () => {
       const ok = await confirm({
         title: 'Leave exam?',
-        message: 'Your progress is saved and you can resume from the library.',
+        message: 'Your progress will be saved before leaving. You can resume from the library.',
         confirmLabel: 'Leave',
         cancelLabel: 'Stay',
         destructive: true,
       });
-      if (ok) router.replace('/');
+      if (ok) {
+        try {
+          await persist();
+          router.replace('/');
+        } catch (err) {
+          await alertDialog('Could not save progress', (err as Error).message);
+        }
+      }
     })();
     return true;
-  }, []);
+  }, [persist]);
 
-  // Intercept the Android hardware back button while an attempt is live.
+  // Every exit must flush, including a paused attempt or a failed submission.
   useEffect(() => {
-    if (!active) return;
+    if (!session) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', confirmExit);
     return () => sub.remove();
-  }, [active, confirmExit]);
+  }, [session?.id, confirmExit]);
 
   const item = session?.items[session.currentIndex];
   const question = item ? questions.get(item.questionId) : undefined;
@@ -206,6 +218,20 @@ export default function SessionScreen() {
           {session.config.mode.toUpperCase()} MODE
         </Text>
       </View>
+
+      {saveError && (
+        <View style={{ padding: spacing.md, gap: spacing.sm }}>
+          <ErrorNotice message={saveError} />
+          <Button
+            label={session.status === 'submitted' ? 'Retry submission' : 'Retry save'}
+            loading={submitting}
+            onPress={() => {
+              if (session.status === 'submitted') void finish('manual');
+              else void persist().catch(() => {});
+            }}
+          />
+        </View>
+      )}
 
       <ExamHeader
         index={session.currentIndex}
@@ -312,7 +338,7 @@ export default function SessionScreen() {
 
         {/* In practice mode the answer is checked before advancing, so the
             primary action changes to "Check" until the answer is revealed. */}
-        {session.config.instantFeedback && !item.revealed && answered ? (
+        {session.status === 'active' && session.config.instantFeedback && !item.revealed && answered ? (
           <Button
             label="Check answer"
             icon="eye"
